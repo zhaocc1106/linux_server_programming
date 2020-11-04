@@ -17,6 +17,7 @@ int main() {
         start_simple_tcp_server(IP_ADDR, PORT, RCV_BUF_SIZE);
     });
     std::thread t2([]() {
+        // 可以使用 telnet 127.0.0.1 8003 命令测试
         start_simple_file_down_server(IP_ADDR, PORT + 1, "../CMakeLists.txt");
     });
 
