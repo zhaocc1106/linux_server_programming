@@ -7,9 +7,17 @@
 
 #include <iostream>
 #include <unistd.h>
+#include <cassert>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
-#include <cassert>
+#include <sys/syslog.h>
+
+/* 系统日志宏 */
+#define SYS_LOGE(tag, format, ...) syslog(LOG_ERR, "[" tag "]" " ERROR " format, ##__VA_ARGS__)
+#define SYS_LOGW(tag, format, ...) syslog(LOG_WARNING, "[" tag "]" " WARNING " format, ##__VA_ARGS__)
+#define SYS_LOGN(tag, format, ...) syslog(LOG_NOTICE, "[" tag "]" " NOTICE " format, ##__VA_ARGS__)
+#define SYS_LOGI(tag, format, ...) syslog(LOG_INFO, "[" tag "]" " INFO " format, ##__VA_ARGS__)
+#define SYS_LOGD(tag, format, ...) syslog(LOG_DEBUG, "[" tag "]" " DEBUG " format, ##__VA_ARGS__)
 
 /**
 * 将进程置成守护进程
