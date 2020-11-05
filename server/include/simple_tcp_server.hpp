@@ -6,16 +6,22 @@
 #define SERVER_SIMPLE_TCP_SERVER_HPP
 
 #include <iostream>
+#include <cassert>
+#include <thread>
+#include <fcntl.h>
 #include <unistd.h>
 #include <error.h>
 #include <string.h>
-#include <cassert>
-#include <thread>
-#include <chrono>
 
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/sendfile.h>
+
+#include "tools.hpp"
+
+#define SIMPLE_TCP_SERVER_TAG "SimpleTcpServer"
 
 /**
  * Start simple tcp server.
@@ -44,6 +50,7 @@ int start_simple_tcp_server(const char* ip, int port, int recv_buf_size = 1152) 
     setsockopt(srv_fd, SOL_SOCKET, SO_RCVBUF, &recv_buf_size, sizeof(recv_buf_size));
     getsockopt(srv_fd, SOL_SOCKET, SO_RCVBUF, &recv_buf_size, (socklen_t*) &len);
     std::cout << "The tcp receive buffer size: " << recv_buf_size << std::endl;
+    SYS_LOGI(SIMPLE_TCP_SERVER_TAG, "The tcp receive buffer size: %d.", recv_buf_size);
 
     /* socket bind地址 */
     int ret = bind(srv_fd, (sockaddr*) &srv_addr, sizeof(srv_addr));
@@ -53,6 +60,7 @@ int start_simple_tcp_server(const char* ip, int port, int recv_buf_size = 1152) 
     ret = listen(srv_fd, 1024);
     assert(ret != -1);
     std::cout << "Server begin listening..." << std::endl;
+    SYS_LOGI(SIMPLE_TCP_SERVER_TAG, "Server begin listening...");
 
     sockaddr_in cli_addr; // 用于保存client socket地址
     bzero(&cli_addr, sizeof(srv_addr));
@@ -64,6 +72,7 @@ int start_simple_tcp_server(const char* ip, int port, int recv_buf_size = 1152) 
     /* recv */
     if (cli_fd < 0) {
         std::cout << "Accept failed with error: " << errno << ", error str: " << strerror(errno) << std::endl;
+        SYS_LOGW(SIMPLE_TCP_SERVER_TAG, "Accept failed with error: %d, error str: %s", errno, strerror(errno));
         return 1;
     } else {
         char buf[BUFSIZ];
@@ -72,12 +81,16 @@ int start_simple_tcp_server(const char* ip, int port, int recv_buf_size = 1152) 
             ssize_t n = recv(cli_fd, buf, BUFSIZ - 1, 0);
             if (n > 0) { // 收到有效msg
                 std::cout << "Recv msg len: " << n << ", msg: " << buf << std::endl;
+                SYS_LOGI(SIMPLE_TCP_SERVER_TAG, "Recv msg len: %zd, msg: %s.", n, buf);
                 memset(buf, 0, sizeof(buf));
             } else if (n < 0) { // 收包出错
                 std::cout << "Recv failed with error num: " << errno << ", error str: " << strerror(errno) << std::endl;
+                SYS_LOGW(SIMPLE_TCP_SERVER_TAG, "Recv failed with error num: %d, error str: %s.", errno,
+                         strerror(errno));
                 exit(1);
             } else { // 对方断开了链接
                 std::cout << "Remote disconnect" << std::endl;
+                SYS_LOGN(SIMPLE_TCP_SERVER_TAG, "Remote disconnect.");
                 close(cli_fd);
                 break;
             }

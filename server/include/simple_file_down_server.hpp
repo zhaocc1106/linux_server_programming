@@ -6,18 +6,21 @@
 #define SERVER_SIMPLE_FILE_DOWN_SERVER_HPP
 
 #include <iostream>
+#include <cassert>
+#include <fcntl.h>
 #include <unistd.h>
 #include <error.h>
 #include <string.h>
-#include <cassert>
-#include <fcntl.h>
-#include <sys/stat.h>
 
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/sendfile.h>
 
+#include "tools.hpp"
+
+#define FILE_DOWN_TAG "FileDownServer"
 
 /**
  * Start simple file downloader server.
@@ -49,6 +52,7 @@ int start_simple_file_down_server(const char* ip, int port, const char* file_pat
     ret = listen(srv_fd, 1024);
     assert(ret != -1);
     std::cout << "Server begin listening..." << std::endl;
+    SYS_LOGI(FILE_DOWN_TAG, "Server begin listening...");
 
     sockaddr_in cli_addr{}; // 用于保存client socket地址
     bzero(&cli_addr, sizeof(cli_addr));
@@ -60,6 +64,7 @@ int start_simple_file_down_server(const char* ip, int port, const char* file_pat
     /* send file */
     if (cli_fd < 0) {
         std::cout << "Accept failed with error: " << errno << ", error str: " << strerror(errno) << std::endl;
+        SYS_LOGW(FILE_DOWN_TAG, "Accept failed with error: %d, error str: %s.", errno, strerror(errno));
         return 1;
     } else {
         /* 打开文件 */
@@ -75,6 +80,7 @@ int start_simple_file_down_server(const char* ip, int port, const char* file_pat
                                  file_stat.st_size);
         std::cout << "Send file with bytes: " << file_stat.st_size << ", send successfully bytes: " << count
                   << std::endl;
+        SYS_LOGI(FILE_DOWN_TAG, "Send file with bytes: %ld, send successfully bytes: %zd", file_stat.st_size, count);
 
         close(file_fd);
         close(cli_fd);
