@@ -75,13 +75,21 @@ int start_simple_tcp_server(const char* ip, int port, int recv_buf_size = 1152) 
         SYS_LOGW(SIMPLE_TCP_SERVER_TAG, "Accept failed with error: %d, error str: %s", errno, strerror(errno));
         return 1;
     } else {
+        char* cli_ip = (char* ) malloc(INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &cli_addr, cli_ip, INET_ADDRSTRLEN);
+        std::cout << "Connected with client, fd: " << cli_fd << ", client addr: " << cli_ip << ", client port: " <<
+        cli_addr.sin_port << std::endl;
+        SYS_LOGN(SIMPLE_TCP_SERVER_TAG, "Connected with client, fd: %d, client addr: %s, client port: %d.", cli_fd,
+                 cli_ip, ntohs(cli_addr.sin_port));
+        free(cli_ip);
+
         char buf[BUFSIZ];
         memset(buf, 0, sizeof(buf));
         while (true) {
             ssize_t n = recv(cli_fd, buf, BUFSIZ - 1, 0);
             if (n > 0) { // 收到有效msg
                 std::cout << "Recv msg len: " << n << ", msg: " << buf << std::endl;
-                SYS_LOGI(SIMPLE_TCP_SERVER_TAG, "Recv msg len: %zd, msg: %s.", n, buf);
+                SYS_LOGI(SIMPLE_TCP_SERVER_TAG, "Recv msg len: %zd, msg: %s", n, buf);
                 memset(buf, 0, sizeof(buf));
             } else if (n < 0) { // 收包出错
                 std::cout << "Recv failed with error num: " << errno << ", error str: " << strerror(errno) << std::endl;

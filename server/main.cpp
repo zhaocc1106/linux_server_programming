@@ -5,9 +5,10 @@
 #include "tools.hpp"
 #include "simple_tcp_server.hpp"
 #include "simple_file_down_server.hpp"
+#include "multi_connection_server.hpp"
 
 #define IP_ADDR "127.0.0.1"
-#define PORT 8002
+#define BEGIN_PORT 8002
 #define RCV_BUF_SIZE 66535
 #define TAG "Main"
 
@@ -19,15 +20,31 @@ int main() {
     // daemonize(true, true);
 
     std::thread t1([]() {
-        start_simple_tcp_server(IP_ADDR, PORT, RCV_BUF_SIZE);
+        // 可以使用 telnet 127.0.0.1 8002 命令测试
+        start_simple_tcp_server(IP_ADDR, BEGIN_PORT, RCV_BUF_SIZE);
     });
     std::thread t2([]() {
         // 可以使用 telnet 127.0.0.1 8003 命令测试
-        start_simple_file_down_server(IP_ADDR, PORT + 1, "../CMakeLists.txt");
+        start_simple_file_down_server(IP_ADDR, BEGIN_PORT + 1, "../CMakeLists.txt");
+    });
+    std::thread t3([]() {
+        start_multi_con_server(IP_ADDR, BEGIN_PORT + 2, MT_SELECT);
+    });
+    std::thread t4([]() {
+        start_multi_con_server(IP_ADDR, BEGIN_PORT + 3, MT_POLL);
+    });
+    std::thread t5([]() {
+        start_multi_con_server(IP_ADDR,
+                               BEGIN_PORT + 4,
+                               MT_EPOLL, // Epoll多路复用机制类型
+                               EP_ET); // 如果是Epoll，则需要指定trigger类型，其他机制可以忽略
     });
 
     SYS_LOGI(TAG, "Server started.");
 
     t1.join();
     t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
 }
