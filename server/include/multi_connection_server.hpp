@@ -359,6 +359,7 @@ static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
                         }
                     }
                 } else if ((int) events[i].data.fd != -1 && events[i].events & EPOLLIN) {
+                    /* 将读取客户端信息的任务分派给线程池中的某个线程 */
                     int fd = events[i].data.fd;
                     boost::asio::dispatch(pool, [fd, trigger_type]() {
                         ep_worker_func(fd, trigger_type);
@@ -402,6 +403,7 @@ void start_multi_con_server(const char* ip, int port, MultiplexType multiplex_ty
     std::cout << "Server begin listening..." << std::endl;
     SYS_LOGI(MULT_CON_SRV_TAG, "Server begin listening...");
 
+    /* 多路复用 */
     switch (multiplex_type) {
     case MT_SELECT:
         serv_select(srv_fd);
