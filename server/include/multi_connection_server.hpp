@@ -232,13 +232,45 @@ static void serv_poll(int listen_fd) {
     }
 }
 
-/********************************************* epoll多路复用处理多连接事件 *********************************************/
+/********************************************* epoll多路复用 + reactor处理多连接事件 *********************************************/
 static int epfd = -1;
 static int fds_len = 0;
 static std::mutex epfd_mutex; // 保护多线程处理epfd与fds_len
 
+/* 独立线程处理客户端的连接请求 */
+static void ep_accept_worker_func(int listen_fd, EpollTriggerType trigger_type) {
+    std::thread::id thread_id = std::this_thread::get_id();
+    unsigned long th_id = 0;
+    memcpy(&th_id, &thread_id, sizeof(unsigned long));
+
+    int cli_fd = serv_accept(listen_fd);
+    if (-1 != cli_fd) {
+        std::lock_guard<std::mutex> epfd_lock(epfd_mutex); // 需要修改epfd，fds_len值，使用互斥元保护
+        if (fds_len < EPOLL_FDS_LEN) {
+            epoll_event event{};
+            event.data.fd = cli_fd;
+            event.events = EPOLLIN;
+            if (trigger_type == EP_ET) {
+                event.events |= EPOLLET; // 设置edge trigger
+            }
+
+            epoll_ctl(epfd, EPOLL_CTL_ADD, cli_fd, &event);
+            fds_len++;
+
+            std::cout << "[Thread-" << th_id << "] Add new client fd(" << cli_fd << ") into fd set, fds_len: "
+                      << fds_len << std::endl;
+            SYS_LOGI(MULT_CON_SRV_TAG, "[Thread-0x%lx] Add new client fd(%d) into fd set, fds_len: %d.", th_id, cli_fd,
+                     fds_len);
+        } else {
+            close(cli_fd);
+            std::cout <<  "[Thread-" << th_id << "] Fd set is full, disconnect client connection." << std::endl;
+            SYS_LOGW(MULT_CON_SRV_TAG, "[Thread-0x%lx] Fd set is full, disconnect client connection.", th_id);
+        }
+    }
+}
+
 /* 独立线程处理客户端发来的信息 */
-static void ep_worker_func(int cli_fd, EpollTriggerType trigger_type) {
+static void ep_msg_worker_func(int cli_fd, EpollTriggerType trigger_type) {
     std::thread::id thread_id = std::this_thread::get_id();
     unsigned long th_id = 0;
     memcpy(&th_id, &thread_id, sizeof(unsigned long));
@@ -334,35 +366,15 @@ static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
         default:
             for (int i = 0; i < num_events; i++) {
                 if ((int) events[i].data.fd == listen_fd && events[i].events & EPOLLIN) {
-                    /* 如果监听连接fd有事件，则处理新的连接 */
-                    int cli_fd = serv_accept(listen_fd);
-                    if (-1 != cli_fd) {
-                        std::lock_guard<std::mutex> epfd_lock(epfd_mutex); // 需要修改epfd，fds_len值，使用互斥元保护
-                        if (fds_len < EPOLL_FDS_LEN) {
-                            event.data.fd = cli_fd;
-                            event.events = EPOLLIN;
-                            if (trigger_type == EP_ET) {
-                                event.events |= EPOLLET; // 设置edge trigger
-                            }
-
-                            epoll_ctl(epfd, EPOLL_CTL_ADD, cli_fd, &event);
-                            fds_len++;
-
-                            std::cout << "Add new client fd(" << cli_fd << ") into fd set, fds_len: " << fds_len
-                                      << std::endl;
-                            SYS_LOGI(MULT_CON_SRV_TAG, "Add new client fd(%d) into fd set, fds_len: %d.", cli_fd,
-                                     fds_len);
-                        } else {
-                            close(cli_fd);
-                            std::cout << "Fd set is full, disconnect client connection." << std::endl;
-                            SYS_LOGW(MULT_CON_SRV_TAG, "Fd set is full, disconnect client connection.");
-                        }
-                    }
+                    /* 将接受客户端连接的任务分派到线程池中的某个线程 */
+                    boost::asio::dispatch(pool, [listen_fd, trigger_type]() {
+                        ep_accept_worker_func(listen_fd, trigger_type);
+                    });
                 } else if ((int) events[i].data.fd != -1 && events[i].events & EPOLLIN) {
                     /* 将读取客户端信息的任务分派给线程池中的某个线程 */
                     int fd = events[i].data.fd;
                     boost::asio::dispatch(pool, [fd, trigger_type]() {
-                        ep_worker_func(fd, trigger_type);
+                        ep_msg_worker_func(fd, trigger_type);
                     });
                 }
             }

@@ -28,12 +28,15 @@ int main() {
         start_simple_file_down_server(IP_ADDR, BEGIN_PORT + 1, "../CMakeLists.txt");
     });
     std::thread t3([]() {
+        // 可以使用 telnet 127.0.0.1 8004 命令测试
         start_multi_con_server(IP_ADDR, BEGIN_PORT + 2, MT_SELECT);
     });
     std::thread t4([]() {
+        // 可以使用 telnet 127.0.0.1 8005 命令测试
         start_multi_con_server(IP_ADDR, BEGIN_PORT + 3, MT_POLL);
     });
     std::thread t5([]() {
+        // 可以使用 telnet 127.0.0.1 8006 命令测试
         start_multi_con_server(IP_ADDR,
                                BEGIN_PORT + 4,
                                MT_EPOLL, // Epoll多路复用机制类型
