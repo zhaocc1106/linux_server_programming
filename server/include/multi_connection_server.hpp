@@ -7,6 +7,7 @@
 #define SERVER_MULTI_CONNECTION_SERVER_HPP
 
 #include <iostream>
+#include <unordered_set>
 #include <thread>
 #include <mutex>
 #include <boost/asio.hpp>
@@ -46,6 +47,42 @@ typedef enum {
     EP_ET // edge trigger
 } EpollTriggerType;
 
+/* epoll相关全局变量 */
+static bool running = true; // server是否正在运行
+static int sig_pipe_fd[2]; // 用于信号处理函数将信号传送到main线程的io事件中来处理
+static int epfd = -1; // epoll fd
+static std::unordered_set<int> ep_fds; // 保存所有epoll监控的fd
+static std::mutex epfd_mutex; // 保护多线程处理epfd与ep_fds
+
+/* 信号处理函数 */
+static void sig_handler(int sig) {
+    // std::cout << "Received signal: " << sig << std::endl;
+    // SYS_LOGW(MULT_CON_SRV_TAG, "Received signal: %d", sig);
+    int save_errno = errno; // 信号处理完后恢复errno
+    int8_t sig_ = (uint8_t) sig;
+    if (sig_pipe_fd[1] != -1) {
+        send(sig_pipe_fd[1], (char*) &sig_, 1, 0);
+    }
+    errno = save_errno;
+}
+
+/* 注册信号 */
+static void add_sig(int sig) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sig_handler;
+    sa.sa_flags |= SA_RESTART; // 信号中断的系统调用会继续执行
+    sigfillset(&sa.sa_mask); // 信号处理过程中屏蔽所有的信号
+    assert(sigaction(sig, &sa, nullptr) != -1);
+}
+
+/* 设置fd为非阻塞 */
+static void set_no_blocking(int cli_fd) {
+    int old_op = fcntl(cli_fd, F_GETFL);
+    int new_op = old_op | O_NONBLOCK;
+    fcntl(cli_fd, F_SETFL, new_op);
+}
+
 /* 接受新的客户端连接 */
 static int serv_accept(int listen_fd) {
     sockaddr_in cli_addr{}; // 用于保存client socket地址
@@ -65,10 +102,7 @@ static int serv_accept(int listen_fd) {
     SYS_LOGN(MULT_CON_SRV_TAG, "Connected with client, fd: %d, client addr: %s, client port: %d.", cli_fd,
              inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 
-    /* 设置fd为非阻塞 */
-    int old_op = fcntl(cli_fd, F_GETFL);
-    int new_op = old_op | O_NONBLOCK;
-    fcntl(cli_fd, F_SETFL, new_op);
+    set_no_blocking(cli_fd);
 
     return cli_fd;
 }
@@ -86,7 +120,7 @@ static int serv_read(int cli_fd) {
 
     if (n > 0) { // 收到有效msg
         std::cout << "[Thread-" << th_id << "] Recv from fd(" << cli_fd << ") msg len: " << n
-                  << ", msg:\n " << buf << std::endl;
+                  << ", msg: " << buf << std::endl;
         SYS_LOGI(MULT_CON_SRV_TAG, "[Thread-0x%lx] Recv msg from fd(%d), len: %zd, msg: %s", th_id, cli_fd, n, buf);
     } else if (n < 0) { // 收包出错
         std::cout << "[Thread-" << th_id << "] Recv from fd(" << cli_fd << ") failed with error num: " << errno
@@ -233,9 +267,25 @@ static void serv_poll(int listen_fd) {
 }
 
 /********************************************* epoll多路复用 + reactor处理多连接事件 *********************************************/
-static int epfd = -1;
-static int fds_len = 0;
-static std::mutex epfd_mutex; // 保护多线程处理epfd与fds_len
+/*独立线程处理信号*/
+static void ep_sig_worker_func(void) {
+    std::thread::id thread_id = std::this_thread::get_id();
+    unsigned long th_id = 0;
+    memcpy(&th_id, &thread_id, sizeof(unsigned long));
+
+    int8_t sig;
+    while (recv(sig_pipe_fd[0], &sig, 1, 0) == 1) {
+        std::cout << "[Thread-" << th_id << "] Handling signal: " << (int) sig << std::endl;
+        SYS_LOGN(MULT_CON_SRV_TAG, "[Thread-0x%lx] Handling signal: %d", th_id, sig);
+        switch (sig) {
+        case SIGTERM:
+        case SIGINT:
+            running = false;
+        default:
+            continue;
+        }
+    }
+}
 
 /* 独立线程处理客户端的连接请求 */
 static void ep_accept_worker_func(int listen_fd, EpollTriggerType trigger_type) {
@@ -245,8 +295,8 @@ static void ep_accept_worker_func(int listen_fd, EpollTriggerType trigger_type) 
 
     int cli_fd = serv_accept(listen_fd);
     if (-1 != cli_fd) {
-        std::lock_guard<std::mutex> epfd_lock(epfd_mutex); // 需要修改epfd，fds_len值，使用互斥元保护
-        if (fds_len < EPOLL_FDS_LEN) {
+        std::lock_guard<std::mutex> epfd_lock(epfd_mutex); // 需要修改epfd，ep_fds值，使用互斥元保护
+        if (ep_fds.size() < EPOLL_FDS_LEN) {
             epoll_event event{};
             event.data.fd = cli_fd;
             event.events = EPOLLIN;
@@ -255,15 +305,15 @@ static void ep_accept_worker_func(int listen_fd, EpollTriggerType trigger_type) 
             }
 
             epoll_ctl(epfd, EPOLL_CTL_ADD, cli_fd, &event);
-            fds_len++;
+            ep_fds.insert(cli_fd);
 
             std::cout << "[Thread-" << th_id << "] Add new client fd(" << cli_fd << ") into fd set, fds_len: "
-                      << fds_len << std::endl;
-            SYS_LOGI(MULT_CON_SRV_TAG, "[Thread-0x%lx] Add new client fd(%d) into fd set, fds_len: %d.", th_id, cli_fd,
-                     fds_len);
+                      << ep_fds.size() << std::endl;
+            SYS_LOGI(MULT_CON_SRV_TAG, "[Thread-0x%lx] Add new client fd(%d) into fd set, fds_len: %lu.", th_id, cli_fd,
+                     ep_fds.size());
         } else {
             close(cli_fd);
-            std::cout <<  "[Thread-" << th_id << "] Fd set is full, disconnect client connection." << std::endl;
+            std::cout << "[Thread-" << th_id << "] Fd set is full, disconnect client connection." << std::endl;
             SYS_LOGW(MULT_CON_SRV_TAG, "[Thread-0x%lx] Fd set is full, disconnect client connection.", th_id);
         }
     }
@@ -321,28 +371,31 @@ static void ep_msg_worker_func(int cli_fd, EpollTriggerType trigger_type) {
     CLOSE_FD:
     std::unique_lock<std::mutex> epfd_lock(epfd_mutex); // 需要修改epfd，fds_len值，使用互斥元保护
     epoll_ctl(epfd, EPOLL_CTL_DEL, cli_fd, nullptr);
-    fds_len--;
+    ep_fds.erase(cli_fd);
     epfd_lock.unlock();
-    std::cout << "[Thread-" << th_id << "] Close fd(" << cli_fd << "), fds_len: " << fds_len << std::endl;
-    SYS_LOGW(MULT_CON_SRV_TAG, "[Thread-0x%lx] Close fd(%d), fds_len:%d.", th_id, cli_fd, fds_len);
+    std::cout << "[Thread-" << th_id << "] Close fd(" << cli_fd << "), fds_len: " << ep_fds.size() << std::endl;
+    SYS_LOGW(MULT_CON_SRV_TAG, "[Thread-0x%lx] Close fd(%d), fds_len:%lu.", th_id, cli_fd, ep_fds.size());
 }
 
 static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
     epfd = epoll_create(EPOLL_FDS_LEN);
 
-    /* 添加监听客户端连接事件 */
+    /* 添加监听客户端连接事件以及信号处理事件 */
     epoll_event event{};
     event.data.fd = listen_fd;
     event.events = EPOLLIN;
     epoll_ctl(epfd, EPOLL_CTL_ADD, listen_fd, &event);
-    fds_len = 1; // 保存当前epoll fd集合总数
+    event.data.fd = sig_pipe_fd[0];
+    epoll_ctl(epfd, EPOLL_CTL_ADD, sig_pipe_fd[0], &event);
+    ep_fds.insert(listen_fd);
+    ep_fds.insert(sig_pipe_fd[0]);
 
     unsigned int concur_count = std::thread::hardware_concurrency();
     boost::asio::thread_pool pool(concur_count); // 根据当前系统硬件并发数量创建线程池
     std::cout << "Create thread pool with concurrent count: " << concur_count << std::endl;
     SYS_LOGN(MULT_CON_SRV_TAG, "Create thread pool with concurrent count: %d.", concur_count);
 
-    while (true) {
+    while (running) {
         std::cout << "Epoll..." << std::endl;
         SYS_LOGN(MULT_CON_SRV_TAG, "Epoll...");
 
@@ -364,12 +417,15 @@ static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
             SYS_LOGE(MULT_CON_SRV_TAG, "Epoll failed with errno: %d, errno str: %s", errno, strerror(errno));
             exit(1);
         default:
+            // std::cout << "Epoll received event num: " << num_events << std::endl;
+            // SYS_LOGI(MULT_CON_SRV_TAG, "Epoll received event num: %d.", num_events);
             for (int i = 0; i < num_events; i++) {
                 if ((int) events[i].data.fd == listen_fd && events[i].events & EPOLLIN) {
-                    /* 将接受客户端连接的任务分派到线程池中的某个线程 */
-                    boost::asio::dispatch(pool, [listen_fd, trigger_type]() {
-                        ep_accept_worker_func(listen_fd, trigger_type);
-                    });
+                    /* 将接受客户端连接的任务放在主线程中做，使得fd及时加入到监听中 */
+                    ep_accept_worker_func(listen_fd, trigger_type);
+                } else if ((int) events[i].data.fd == sig_pipe_fd[0] && events[i].events & EPOLLIN) {
+                    /* 将信号处理任务分派到线程池中的某个线程 */
+                    boost::asio::dispatch(pool, ep_sig_worker_func);
                 } else if ((int) events[i].data.fd != -1 && events[i].events & EPOLLIN) {
                     /* 将读取客户端信息的任务分派给线程池中的某个线程 */
                     int fd = events[i].data.fd;
@@ -380,6 +436,14 @@ static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
             }
         }
     }
+
+    std::cout << "Multi connection server stopped." << std::endl;
+    SYS_LOGN(MULT_CON_SRV_TAG, "Multi connection server stopped.");
+    for (auto& fd: ep_fds) { // 关闭epoll监听的所有fd
+        close(fd);
+    }
+    close(sig_pipe_fd[1]);
+    exit(0);
 }
 
 /**
@@ -391,6 +455,16 @@ static void serv_epoll(int listen_fd, EpollTriggerType trigger_type) {
 */
 void start_multi_con_server(const char* ip, int port, MultiplexType multiplex_type,
                             EpollTriggerType trigger_type = EP_ET) {
+    /* 注册信号，创建信号传递通道 */
+    socketpair(AF_UNIX, SOCK_STREAM, 0, sig_pipe_fd);
+    set_no_blocking(sig_pipe_fd[0]);
+    set_no_blocking(sig_pipe_fd[1]);
+    add_sig(SIGTERM);
+    add_sig(SIGINT); // ctrl + c
+    add_sig(SIGPIPE); // 写通道关闭触发
+    add_sig(SIGURG); // 收到带外数据触发
+    add_sig(SIGALRM); // 系统定时器
+
     /* 设置tcp/ipv4的socket地址 */
     sockaddr_in srv_addr{};
     bzero(&srv_addr, sizeof(srv_addr));
