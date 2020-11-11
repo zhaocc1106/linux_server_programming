@@ -6,6 +6,8 @@
 #define SERVER_TOOLS_HPP
 
 #include <iostream>
+#include <thread>
+#include <cstring>
 #include <unistd.h>
 #include <cassert>
 #include <sys/stat.h>
@@ -74,6 +76,17 @@ bool daemonize(bool no_change, bool no_close) {
     assert(open("/dev/null", O_RDWR) == 2);
 
     return true;
+}
+
+/**
+* 获取当前线程ID
+*/
+unsigned long get_thread_id() {
+    std::this_thread::get_id();
+    std::thread::id thread_id = std::this_thread::get_id();
+    unsigned long th_id = 0;
+    memcpy(&th_id, &thread_id, sizeof(unsigned long));
+    return th_id;
 }
 
 #endif //SERVER_TOOLS_HPP
