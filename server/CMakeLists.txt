@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 14)
 include_directories(include)
 
 add_executable(server
-        include/simple_tcp_server.hpp main.cpp include/simple_file_down_server.hpp include/tools.hpp include/multi_connection_server.hpp)
+        include/simple_tcp_server.hpp main.cpp include/simple_file_down_server.hpp include/tools.hpp include/multi_connection_server.hpp include/libev_multi_con_server.hpp)
 
 # boost begin
 set(Boost_DETAILED_FAILURE_MSG ON)
@@ -19,4 +19,4 @@ include_directories(${BOOST_ROOT})
 target_link_libraries(server ${Boost_LIBRARIES})
 # boost end
 
-target_link_libraries(server pthread)
+target_link_libraries(server pthread event)

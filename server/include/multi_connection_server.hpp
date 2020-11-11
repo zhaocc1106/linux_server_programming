@@ -1,6 +1,6 @@
 /**
 * 通过I/O复用技术(select, poll, epoll)实现能够处理多个客户端的服务器。
-* 其中epoll机制使用两种trigger方式实现，并且将任务放到线程池中去做。
+* 其中epoll机制使用两种trigger方式实现，并且使用reactor I/O模型将任务放到线程池中去做。
 */
 
 #ifndef SERVER_MULTI_CONNECTION_SERVER_HPP
