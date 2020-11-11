@@ -22,15 +22,8 @@
 #define LIBEV_SERVER_TAG "LibevMultiConnServer"
 #define BUF_SIZE 10
 
-typedef enum {
-    SIMPLE, // 基础函数实现
-    MEDIUM, // 中等函数实现
-    ADVANCED, // 高级函数实现
-} LibevType;
-
-/******************************************** libevent基础函数 ********************************************/
 /* init server */
-static int tcp_server_init_simple(const char* ip, int port) {
+static int tcp_server_init(const char* ip, int port) {
     /* 设置tcp/ipv4的socket地址 */
     sockaddr_in srv_addr{};
     bzero(&srv_addr, sizeof(srv_addr));
@@ -69,7 +62,7 @@ static int tcp_server_init_simple(const char* ip, int port) {
 }
 
 /* 客戶端消息事件回调 */
-static void read_cb_simple(int cli_fd, short events, void* arg) {
+static void read_cb(int cli_fd, short events, void* arg) {
     char buf[BUF_SIZE];
     ssize_t n = recv(cli_fd, buf, BUF_SIZE - 1, 0);
 
@@ -104,8 +97,21 @@ static void read_cb_simple(int cli_fd, short events, void* arg) {
     close(cli_fd);
 }
 
+/* 信号消息事件回调 */
+static void signal_cb(int sig, short events, void* arg) {
+    std::cout << "Received signal: " << sig << std::endl;
+    SYS_LOGN(LIBEV_SERVER_TAG, "Received signal: %d", sig);
+
+    switch (sig) {
+    case SIGINT:
+        auto* base = (struct event_base* ) arg;
+        event_base_loopexit(base, nullptr);
+        break;
+    }
+}
+
 /* 客户端连接事件回调 */
-static void accept_cb_simple(int srv_fd, short events, void* arg) {
+static void accept_cb(int srv_fd, short events, void* arg) {
     struct sockaddr_in cli_addr{};
     socklen_t len = sizeof(sockaddr_in);
 
@@ -125,13 +131,13 @@ static void accept_cb_simple(int srv_fd, short events, void* arg) {
     /* 注册客户端信息事件 */
     auto base = (struct event_base*) arg;
     struct event* ev = event_new(nullptr, -1, 0, nullptr, nullptr); // 仅创建
-    event_assign(ev, base, cli_fd, EV_READ | EV_PERSIST, read_cb_simple, ev); // assign event
+    event_assign(ev, base, cli_fd, EV_READ | EV_PERSIST, read_cb, ev); // assign event
     event_add(ev, nullptr);
 }
 
 /* 开启server */
-static void start_libev_multi_server_simple(const char* ip, int port) {
-    int srv_fd = tcp_server_init_simple(ip, port);
+static void start_libev_multi_server(const char* ip, int port) {
+    int srv_fd = tcp_server_init(ip, port);
     if (srv_fd == -1) {
         std::cout << "Tcp server init failed." << std::endl;
         SYS_LOGE(LIBEV_SERVER_TAG, "Tcp server init failed.");
@@ -140,30 +146,21 @@ static void start_libev_multi_server_simple(const char* ip, int port) {
 
     struct event_base* base = event_base_new(); // 创建event_base
 
+    /* 注册信号事件 */
+    struct event* sig_listener = evsignal_new(base, SIGINT, signal_cb, base);
+    event_add(sig_listener, nullptr);
+
     /* 注册客户端连接事件 */
-    struct event* accept_listener = event_new(base, srv_fd, EV_READ | EV_PERSIST, accept_cb_simple, base);
+    struct event* accept_listener = event_new(base, srv_fd, EV_READ | EV_PERSIST, accept_cb, base);
     event_add(accept_listener, nullptr);
 
     event_base_dispatch(base); // 运行event base looper
-}
+    std::cout << "Event looper stopped." << std::endl;
+    SYS_LOGN(LIBEV_SERVER_TAG, "Event looper stopped.");
 
-/**
-* 使用libevent函数实现多客户端服务器
-* @param ip: ip地址
-* @param port: 端口
-* @param libev_type: libevent 函数类型
-*/
-void start_libev_multi_server(const char* ip, int port, LibevType libev_type) {
-    switch (libev_type) {
-    case SIMPLE:
-        start_libev_multi_server_simple(ip, port);
-        break;
-    case MEDIUM:
-        break;
-    case ADVANCED:
-    default:
-        break;
-    }
+    event_base_free(base);
+
+    close(srv_fd);
 }
 
 #endif //SERVER_LIBEV_MULTI_CON_SERVER_HPP

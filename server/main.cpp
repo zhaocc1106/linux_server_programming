@@ -30,7 +30,5 @@ int main() {
                            MT_EPOLL, // Epoll多路复用机制类型
                            EP_ET); // 如果是Epoll，则需要指定trigger类型，其他机制可以忽略
     */
-    start_libev_multi_server(IP_ADDR, BEGIN_PORT + 5, SIMPLE);
-
-    SYS_LOGI(TAG, "Server started.");
+    start_libev_multi_server(IP_ADDR, BEGIN_PORT + 5);
 }
