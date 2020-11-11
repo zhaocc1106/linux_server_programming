@@ -28,7 +28,8 @@ typedef enum {
     ADVANCED, // 高级函数实现
 } LibevType;
 
-/* libevent基础函数init server */
+/******************************************** libevent基础函数 ********************************************/
+/* init server */
 static int tcp_server_init_simple(const char* ip, int port) {
     /* 设置tcp/ipv4的socket地址 */
     sockaddr_in srv_addr{};
@@ -67,6 +68,7 @@ static int tcp_server_init_simple(const char* ip, int port) {
     return -1;
 }
 
+/* 客戶端消息事件回调 */
 static void read_cb_simple(int cli_fd, short events, void* arg) {
     char buf[BUF_SIZE];
     ssize_t n = recv(cli_fd, buf, BUF_SIZE - 1, 0);
@@ -102,6 +104,7 @@ static void read_cb_simple(int cli_fd, short events, void* arg) {
     close(cli_fd);
 }
 
+/* 客户端连接事件回调 */
 static void accept_cb_simple(int srv_fd, short events, void* arg) {
     struct sockaddr_in cli_addr{};
     socklen_t len = sizeof(sockaddr_in);
@@ -126,11 +129,7 @@ static void accept_cb_simple(int srv_fd, short events, void* arg) {
     event_add(ev, nullptr);
 }
 
-/**
-* 使用libevent基础函数实现多客户端服务器
-* @param ip: ip地址
-* @param port: 端口
-*/
+/* 开启server */
 static void start_libev_multi_server_simple(const char* ip, int port) {
     int srv_fd = tcp_server_init_simple(ip, port);
     if (srv_fd == -1) {
@@ -149,7 +148,7 @@ static void start_libev_multi_server_simple(const char* ip, int port) {
 }
 
 /**
-* 使用libevent基础函数实现多客户端服务器
+* 使用libevent函数实现多客户端服务器
 * @param ip: ip地址
 * @param port: 端口
 * @param libev_type: libevent 函数类型
