@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <thread>
+#include <atomic>
 #include <cassert>
 #include <cstdlib>
 #include <unistd.h>
@@ -20,7 +21,8 @@
 #include "tools.hpp"
 
 #define LIBEV_SERVER_TAG "LibevMultiConnServer"
-#define BUF_SIZE 10
+
+static std::atomic<int> succ_cli_count(0); // 完成收消息的客户端数量
 
 /* init server */
 static int tcp_server_init(const char* ip, int port) {
@@ -123,36 +125,42 @@ void be_msg_cb(bufferevent* be, void* arg) {
     while (true) {
         int n = bufferevent_read(be, buf, BUF_SIZE - 1); // bufferevent 从socket中读取数据
         if (n <= 0) {
-            std::cout << "[Thread-" << th_id << "] bufferevent read error, n: " << n << ", errno: " << errno
-                      << ", errno string: " << strerror(errno) << std::endl;
-            SYS_LOGW(LIBEV_SERVER_TAG, "[Thread-0x%lx] bufferevent read error, n: %d, errno: %d, errno string: %s",
-                     th_id, n, errno, strerror(errno));
+            // std::cout << "[Thread-" << th_id << "] bufferevent read error, n: " << n << ", errno: " << errno
+            //           << ", errno string: " << strerror(errno) << std::endl;
+            // SYS_LOGW(LIBEV_SERVER_TAG, "[Thread-0x%lx] bufferevent read error, n: %d, errno: %d, errno string: %s",
+            //          th_id, n, errno, strerror(errno));
             break;
         }
 
         buf[n] = '\0';
-        std::cout << "[Thread-" << th_id << "] Recv from fd(" << cli_fd << ") msg len: " << n
-                  << ", msg: " << buf << std::endl;
-        SYS_LOGI(LIBEV_SERVER_TAG, "[Thread-0x%lx] Recv msg from fd(%d), len: %d, msg: %s", th_id, cli_fd, n, buf);
+        succ_cli_count++;
+        std::cout << "[Thread-" << th_id << "] Recv from fd(" << cli_fd << "), succ_cli_count: "
+                  << succ_cli_count.load() << ", msg len: " << n << ", msg: " << buf << std::endl;
+        SYS_LOGI(LIBEV_SERVER_TAG, "[Thread-0x%lx] Recv msg from fd(%d), succ_cli_count: %d, len: %d, msg: %s",
+                 th_id,
+                 cli_fd, succ_cli_count.load(), n, buf);
     }
 
-    bufferevent_write(be, "OK\r\n", 4); // 回复一条信息
+    bufferevent_write(be, "OK", 2); // 回复一条信息
 }
 
 /* bufferevent处理socket事件 */
 void be_event_cb(bufferevent* be, short event, void* arg) {
     int cli_fd = bufferevent_getfd(be);
+    unsigned long th_id = get_thread_id();
     // std::cout << "event: " << event << std::endl;
     // SYS_LOGI(LIBEV_SERVER_TAG, "event: 0x%x", event);
 
     if (event & BEV_EVENT_EOF) {
-        std::cout << "Remote fd(" << cli_fd << ") disconnect" << std::endl;
-        SYS_LOGN(LIBEV_SERVER_TAG, "Remote fd(%d) disconnect.", cli_fd);
+        std::cout << "[Thread-" << th_id << "] Remote fd(" << cli_fd << ") disconnect" << std::endl;
+        SYS_LOGN(LIBEV_SERVER_TAG, "[Thread-0x%lx] Remote fd(%d) disconnect.", th_id, cli_fd);
         bufferevent_free(be);
     } else if (event & BEV_EVENT_ERROR) {
-        std::cout << "Remote fd(" << cli_fd << ") error, errno: " << errno << ", errno string: " << strerror(errno)
+        std::cout << "[Thread-" << th_id << "] Remote fd(" << cli_fd << ") error, errno: " << errno
+                  << ", errno string: " << strerror(errno)
                   << std::endl;
-        SYS_LOGW(LIBEV_SERVER_TAG, "Remote fd(%d) error, errno: %d, errno string: %s.", cli_fd, errno, strerror(errno));
+        SYS_LOGW(LIBEV_SERVER_TAG, "[Thread-0x%lx] Remote fd(%d) error, errno: %d, errno string: %s.", th_id,
+                 cli_fd, errno, strerror(errno));
         bufferevent_free(be);
     }
 }
@@ -178,18 +186,22 @@ static void accept_cb(int srv_fd, short events, void* arg) {
     /* 注册客户端信息事件 */
     auto base = (struct event_base*) arg;
     /* 基础函数注册 */
-    struct event* ev = event_new(nullptr, -1, 0, nullptr, nullptr); // 仅创建
-    event_assign(ev, base, cli_fd, EV_READ | EV_PERSIST, msg_cb, ev); // assign event
-    event_add(ev, nullptr);
+    // struct event* ev = event_new(nullptr, -1, 0, nullptr, nullptr); // 仅创建
+    // event_assign(ev, base, cli_fd, EV_READ | EV_PERSIST, msg_cb, ev); // assign event
+    // event_add(ev, nullptr);
 
     /* bufferevent高阶函数注册 */
-    // bufferevent* be = bufferevent_socket_new(base, cli_fd, BEV_OPT_CLOSE_ON_FREE); // 创建bufferevent socket
-    // bufferevent_setcb(be, be_msg_cb, nullptr, be_event_cb, arg); // 设置bufferevent read，event回调与参数
-    // bufferevent_enable(be, EV_READ | EV_PERSIST); // 使能event事件
+    bufferevent* be = bufferevent_socket_new(base, cli_fd, BEV_OPT_CLOSE_ON_FREE); // 创建bufferevent socket
+    bufferevent_setcb(be, be_msg_cb, nullptr, be_event_cb, arg); // 设置bufferevent read，event回调与参数
+    bufferevent_enable(be, EV_READ | EV_PERSIST); // 使能event事件
 }
 
-/* 开启server */
-static void start_libev_multi_server(const char* ip, int port) {
+/**
+* 开启server
+* @param ip: ip地址
+* @param port: 端口
+*/
+void start_libev_multi_server(const char* ip, int port) {
     int srv_fd = tcp_server_init(ip, port);
     if (srv_fd == -1) {
         std::cout << "Tcp server init failed." << std::endl;
@@ -207,9 +219,9 @@ static void start_libev_multi_server(const char* ip, int port) {
     struct event* accept_listener = event_new(base, srv_fd, EV_READ | EV_PERSIST, accept_cb, base);
     event_add(accept_listener, nullptr);
 
-    event_base_dispatch(base); // 运行event base looper
-    std::cout << "Event looper stopped." << std::endl;
-    SYS_LOGN(LIBEV_SERVER_TAG, "Event looper stopped.");
+    int ret = event_base_dispatch(base); // 运行event base looper
+    std::cout << "Event looper stopped ret: " << ret << ", errno str: " << strerror(errno) << std::endl;
+    SYS_LOGN(LIBEV_SERVER_TAG, "Event looper stopped ret: %d, errno str: %s.", ret, strerror(errno));
 
     event_base_free(base);
 

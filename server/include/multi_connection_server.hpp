@@ -32,7 +32,6 @@
 #define SELECT_FDS_LEN 128 // select fd 集合最大个数
 #define POLL_FDS_LEN 1024 // poll fd 集合最大个数
 #define EPOLL_FDS_LEN 1024 // epoll fd 集合最大个数
-#define BUF_SIZE 10
 
 /* 多路复用的类型 */
 typedef enum {

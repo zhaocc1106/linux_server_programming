@@ -14,6 +14,8 @@
 #include <sys/fcntl.h>
 #include <sys/syslog.h>
 
+#define BUF_SIZE 4096
+
 /* 系统日志宏 */
 #define SYS_LOGE(tag, format, ...) syslog(LOG_ERR, "[" tag "]" "  ERROR  " format, ##__VA_ARGS__)
 #define SYS_LOGW(tag, format, ...) syslog(LOG_WARNING, "[" tag "]" "  WARNING  " format, ##__VA_ARGS__)
