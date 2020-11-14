@@ -6,7 +6,13 @@ set(CMAKE_CXX_STANDARD 14)
 include_directories(include)
 
 add_executable(server
-        include/simple_tcp_server.hpp main.cpp include/simple_file_down_server.hpp include/tools.hpp include/multi_connection_server.hpp include/libev_multi_con_server.hpp)
+        main.cpp
+        include/simple_tcp_server.hpp
+        include/simple_file_down_server.hpp
+        include/tools.hpp include/multi_connection_server.hpp
+        include/libev_multi_con_server.hpp
+        include/libev_half_reactive_server.hpp
+        include/thread_safe_queue.hpp)
 
 # boost begin
 set(Boost_DETAILED_FAILURE_MSG ON)

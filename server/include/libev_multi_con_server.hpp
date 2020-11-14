@@ -1,5 +1,5 @@
 /**
-* 使用libevent事件驱动实现接受多个客户端连接的服务器
+* 使用libevent事件驱动，单线程处理事件实现接受多个客户端连接的服务器
 */
 
 #ifndef SERVER_LIBEV_MULTI_CON_SERVER_HPP
@@ -46,7 +46,7 @@ static int tcp_server_init(const char* ip, int port) {
     }
 
     /* listen */
-    ret = listen(srv_fd, 1024);
+    ret = listen(srv_fd, 65535);
     if (ret == -1) {
         goto ERROR;
     }
@@ -117,7 +117,7 @@ static void signal_cb(int sig, short events, void* arg) {
 }
 
 /* bufferevent处理客户端信息 */
-void be_msg_cb(bufferevent* be, void* arg) {
+static void be_msg_cb(bufferevent* be, void* arg) {
     char buf[BUF_SIZE];
     int cli_fd = bufferevent_getfd(be);
     unsigned long th_id = get_thread_id();
@@ -145,7 +145,7 @@ void be_msg_cb(bufferevent* be, void* arg) {
 }
 
 /* bufferevent处理socket事件 */
-void be_event_cb(bufferevent* be, short event, void* arg) {
+static void be_event_cb(bufferevent* be, short event, void* arg) {
     int cli_fd = bufferevent_getfd(be);
     unsigned long th_id = get_thread_id();
     // std::cout << "event: " << event << std::endl;

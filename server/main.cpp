@@ -10,6 +10,7 @@
 #include "simple_file_down_server.hpp"
 #include "multi_connection_server.hpp"
 #include "libev_multi_con_server.hpp"
+#include "libev_half_reactive_server.hpp"
 
 #define RCV_BUF_SIZE 66535
 #define TAG "Main"
@@ -46,15 +47,14 @@ int main(int argc, char** argv) {
     //是否转成守护进程
     // daemonize(true, true);
 
-    /*
-    start_simple_tcp_server(ip, port, RCV_BUF_SIZE);
-    start_simple_file_down_server(ip, port, "../CMakeLists.txt");
-    start_multi_con_server(ip, port, MT_SELECT);
-    start_multi_con_server(ip, port, MT_POLL);
-    start_multi_con_server(ip,
-                           port,
-                           MT_EPOLL, // Epoll多路复用机制类型
-                           EP_ET); // 如果是Epoll，则需要指定trigger类型，其他机制可以忽略
-    */
-    start_libev_multi_server(ip, port);
+    // start_simple_tcp_server(ip, port, RCV_BUF_SIZE);
+    // start_simple_file_down_server(ip, port, "../CMakeLists.txt");
+    // start_multi_con_server(ip, port, MT_SELECT);
+    // start_multi_con_server(ip, port, MT_POLL);
+    // start_multi_con_server(ip,
+    //                        port,
+    //                        MT_EPOLL, // Epoll多路复用机制类型
+    //                        EP_ET); // 如果是Epoll，则需要指定trigger类型，其他机制可以忽略
+    // start_libev_multi_server(ip, port);
+    start_libev_adv_server(ip, port, concur);
 }
