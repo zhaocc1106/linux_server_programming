@@ -8,6 +8,7 @@ linux服务器编程
 [multi_connection_server.hpp](https://github.com/zhaocc1106/linux_server_programming/blob/main/server/include/multi_connection_server.hpp)：使用select，poll，epoll（et与lt触发模式，并且reactor I/O模型将任务放到分发线程池中提升并发）多路复用机制实现支持多客户端连接的服务器。<br>
 [libev_multi_con_server.hpp](https://github.com/zhaocc1106/linux_server_programming/blob/main/server/include/libev_multi_con_server.hpp)：使用libevent事件驱动和单线程实现支持多客户端连接的服务器。<br>
 [libev_half_reactive_server.hpp](https://github.com/zhaocc1106/linux_server_programming/blob/main/server/include/libev_half_reactive_server.hpp)：使用libevent事件驱动 + half-reactive事件处理模式 + 线程池实现高速处理多请求的server。<br>
+[thread_safe_queue.hpp](https://github.com/zhaocc1106/linux_server_programming/blob/main/server/include/thread_safe_queue.hpp)：多线程安全队列。<br>
 
 ## client
 [simple_tcp_client.hpp](https://github.com/zhaocc1106/linux_server_programming/blob/main/client/include/simple_tcp_client.hpp)：简单的tcp client，回顾常用的socket api，以及socket创建，连接，读写。<br>
