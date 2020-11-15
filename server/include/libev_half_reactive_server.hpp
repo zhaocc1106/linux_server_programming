@@ -231,9 +231,9 @@ static void worker_func(int worker_ind, int main_fd) {
 static void conn_listener_cb(evconnlistener* listener, evutil_socket_t fd, struct sockaddr* sock, int socklen,
                              void* arg) {
     auto* cli_addr = (sockaddr_in*) sock;
-    std::cout << "Connected with client, fd: " << fd << ", client addr: " << inet_ntoa(cli_addr->sin_addr)
+    std::cout << "[MainThread] Connected with client, fd: " << fd << ", client addr: " << inet_ntoa(cli_addr->sin_addr)
               << ", client port: " << ntohs(cli_addr->sin_port) << std::endl;
-    SYS_LOGN(LIBEV_ADV_SERVER_TAG, "Connected with client, fd: %d, client addr: %s, client port: %d.", fd,
+    SYS_LOGN(LIBEV_ADV_SERVER_TAG, "[MainThread] Connected with client, fd: %d, client addr: %s, client port: %d.", fd,
              inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
 
     evutil_make_socket_nonblocking(fd); // 非阻塞fd
@@ -311,7 +311,7 @@ void start_libev_adv_server(const char* ip, int port, int concur) {
 
     /* 注册socket连接事件 */
     evconnlistener* con_listener = evconnlistener_new_bind(base, conn_listener_cb, base,
-                                                           LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
+                                                           LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, 65535,
                                                            (sockaddr*) &srv_addr, sizeof(sockaddr_in));
     int ret = event_base_dispatch(base);
     std::cout << "[Main thread] event base looper end, ret: " << ret << ", errno str: " << strerror(errno) << std::endl;
