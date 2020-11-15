@@ -93,6 +93,7 @@ static void msg_cb(int cli_fd, short events, void* arg) {
         }
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟处理请求消耗时间
     send(cli_fd, "OK\r\n", 4, 0); // 回复一个消息
     return;
 
@@ -141,6 +142,7 @@ static void be_msg_cb(bufferevent* be, void* arg) {
                  cli_fd, succ_cli_count.load(), n, buf);
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟处理请求消耗时间
     bufferevent_write(be, "OK", 2); // 回复一条信息
 }
 

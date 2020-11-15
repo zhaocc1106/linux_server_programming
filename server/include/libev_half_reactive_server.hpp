@@ -98,6 +98,7 @@ static void client_msg_cb(bufferevent* be, void* arg) {
                  worker_ind, th_id, cli_fd, succ_cli_count.load(), n, buf);
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟处理请求消耗时间
     bufferevent_write(be, "OK", 2); // 回复一条信息
 }
 
