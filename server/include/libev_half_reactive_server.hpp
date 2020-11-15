@@ -66,7 +66,11 @@ std::vector<zhaocc::ThreadSafeQueue<CommQueueItem>> comm_queues; // 维护所有
 
 /************************************************ Functions ***********************************************/
 
-/* 工作线程处理客户端发来的信息 */
+/**
+* 工作线程处理客户端发来的信息
+* @param be: bufferevent
+* @param arg: 额外参数，这里是工作线程上下文
+*/
 static void client_msg_cb(bufferevent* be, void* arg) {
     auto* ctx = (CommContex*) arg;
     int worker_ind = ctx->worker_id;
@@ -97,14 +101,19 @@ static void client_msg_cb(bufferevent* be, void* arg) {
     bufferevent_write(be, "OK", 2); // 回复一条信息
 }
 
-/* 工作线程处理socket事件 */
+/**
+* 工作线程处理socket event事件
+* @param be: bufferevent
+* @param event: socket event
+* @param arg: 额外参数，这里是工作线程上下文
+*/
 static void client_event_cb(bufferevent* be, short event, void* arg) {
     auto* ctx = (CommContex*) arg;
     unsigned long th_id = get_thread_id();
     int worker_ind = ctx->worker_id;
     int cli_fd = bufferevent_getfd(be);
-    std::cout << "event: " << event << std::endl;
-    SYS_LOGI(LIBEV_SERVER_TAG, "event: 0x%x", event);
+    // std::cout << "event: " << event << std::endl;
+    // SYS_LOGI(LIBEV_SERVER_TAG, "event: 0x%x", event);
 
     if (event & BEV_EVENT_EOF) {
         std::cout << "[Worker-" << worker_ind << " Thread-" << th_id << "] Remote fd(" << cli_fd << ") disconnect"
@@ -211,7 +220,14 @@ static void worker_func(int worker_ind, int main_fd) {
     event_base_free(base);
 }
 
-/* 主线程监听连接事件回调 */
+/**
+* 主线程监听连接事件回调
+* @param listener: event connection listener.
+* @param fd: 连接成功的socket fd
+* @param sock: 连接成功的socket addr
+* @param socklen: docket addr len
+* @param arg: 参数，这里为空
+*/
 static void conn_listener_cb(evconnlistener* listener, evutil_socket_t fd, struct sockaddr* sock, int socklen,
                              void* arg) {
     auto* cli_addr = (sockaddr_in*) sock;
@@ -234,7 +250,12 @@ static void conn_listener_cb(evconnlistener* listener, evutil_socket_t fd, struc
     }
 }
 
-/* 主线程监听信号事件回调 */
+/**
+* 主线程监听信号事件回调
+* @param sig: 信号
+* @param events: 事件类型
+* @param arg: 参数，这里保存主线程的event base
+*/
 static void signal_event_cb(int sig, short events, void* arg) {
     std::cout << "[Main thread] Received signal: " << sig << std::endl;
     SYS_LOGN(LIBEV_ADV_SERVER_TAG, "[Main thread] Received signal: %d", sig);
