@@ -1,9 +1,9 @@
 /**
-* 使用libevent事件驱动 + half-reactive事件处理模式 + 线程池实现及时处理多请求的server
+* 使用libevent事件驱动 + half-sync/half-reactive事件处理模式 + 线程池实现及时处理多请求的server
 */
 
-#ifndef SERVER_LIBEV_HALF_REACTIVE_SERVER_HPP
-#define SERVER_LIBEV_HALF_REACTIVE_SERVER_HPP
+#ifndef SERVER_LIBEV_HALF_SYNC_REACTIVE_THREAD_POOL_SERVER_HPP
+#define SERVER_LIBEV_HALF_SYNC_REACTIVE_THREAD_POOL_SERVER_HPP
 
 #include <iostream>
 #include <vector>
@@ -325,4 +325,4 @@ void start_libev_adv_server(const char* ip, int port, int concur) {
     pool.join(); // 等待工作线程退出
 }
 
-#endif //SERVER_LIBEV_HALF_REACTIVE_SERVER_HPP
+#endif //SERVER_LIBEV_HALF_SYNC_REACTIVE_THREAD_POOL_SERVER_HPP

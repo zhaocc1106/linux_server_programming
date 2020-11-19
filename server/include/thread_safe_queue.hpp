@@ -17,32 +17,32 @@ namespace zhaocc {
     template<class T>
     class ThreadSafeQueue {
     private:
-        std::queue<T> data_queue;
-        mutable std::mutex queue_mutex; // 队列互斥元，mutable代表永久可变
-        std::condition_variable queue_cond; // 队列条件变量
+        std::queue<T> _data_queue;
+        mutable std::mutex _queue_mutex; // 队列互斥元，mutable代表永久可变
+        std::condition_variable _queue_cond; // 队列条件变量
 
     public:
         ThreadSafeQueue() = default;
 
         ThreadSafeQueue(const ThreadSafeQueue& other) {
             // std::cout << "ThreadSafeQueue copy constructor" << std::endl;
-            std::lock_guard<std::mutex> lock(other.queue_mutex); // 锁定被拷贝对象的数据队列
-            data_queue = other.data_queue;
+            std::lock_guard<std::mutex> lock(other._queue_mutex); // 锁定被拷贝对象的数据队列
+            _data_queue = other._data_queue;
         }
 
-        ThreadSafeQueue(ThreadSafeQueue&& other)  noexcept {
+        ThreadSafeQueue(ThreadSafeQueue&& other) noexcept {
             // std::cout << "ThreadSafeQueue move constructor" << std::endl;
-            std::lock_guard<std::mutex> lock(other.queue_mutex); // 锁定被拷贝对象的数据队列
-            data_queue = std::move(other.data_queue);
+            std::lock_guard<std::mutex> lock(other._queue_mutex); // 锁定被拷贝对象的数据队列
+            _data_queue = std::move(other._data_queue);
         }
 
         /**
         * empty判断队列是否为空
         * @return true代表为空，false则代表非空
         */
-        bool empty() const { // const表示该函数无法修改任何对象的属性，queue_mutex用mutable描述，代表它可变。
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            return data_queue.empty();
+        bool empty() const { // const表示该函数无法修改任何对象的属性，_queue_mutex用mutable描述，代表它可变。
+            std::lock_guard<std::mutex> lock(_queue_mutex);
+            return _data_queue.empty();
         }
 
         /**
@@ -50,9 +50,9 @@ namespace zhaocc {
         * @param new_value: 新元素
         */
         void push(const T& new_val) {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            data_queue.push(new_val);
-            queue_cond.notify_one(); // 随机唤醒一个线程
+            std::lock_guard<std::mutex> lock(_queue_mutex);
+            _data_queue.push(new_val);
+            _queue_cond.notify_one(); // 随机唤醒一个线程
         }
 
         /**
@@ -60,9 +60,9 @@ namespace zhaocc {
         * @param new_value: 新元素
         */
         void push(T&& new_val) {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            data_queue.push(new_val);
-            queue_cond.notify_one(); // 随机唤醒一个线程
+            std::lock_guard<std::mutex> lock(_queue_mutex);
+            _data_queue.push(new_val);
+            _queue_cond.notify_one(); // 随机唤醒一个线程
         }
 
 
@@ -71,10 +71,10 @@ namespace zhaocc {
         * @param value: 用于获取元素的引用
         */
         void pop(T& new_val) {
-            std::unique_lock<std::mutex> lock(queue_mutex); // 这里锁定不能使用lock_guard，因为lock_guard锁定后无法灵活的解锁，只能析构时解锁
-            queue_cond.wait(lock, [this]() { return !data_queue.empty(); }); // 锁会在wait过程中解锁，一直等到lambda表达式成立
-            new_val = data_queue.front();
-            data_queue.pop();
+            std::unique_lock<std::mutex> lock(_queue_mutex); // 这里锁定不能使用lock_guard，因为lock_guard锁定后无法灵活的解锁，只能析构时解锁
+            _queue_cond.wait(lock, [this]() { return !_data_queue.empty(); }); // 锁会在wait过程中解锁，一直等到lambda表达式成立
+            new_val = _data_queue.front();
+            _data_queue.pop();
         }
 
         /**
@@ -82,10 +82,10 @@ namespace zhaocc {
          * @return shared pointer指向元素
          */
         std::shared_ptr<T> pop() {
-            std::unique_lock<std::mutex> lock(queue_mutex); // 这里锁定不能使用lock_guard，因为lock_guard锁定后无法灵活的解锁，只能析构时解锁
-            queue_cond.wait(lock, [this]() { return !data_queue.empty(); }); // 锁会在wait过程中解锁，一直等到lambda表达式成立
-            std::shared_ptr<T> res(data_queue.front());
-            data_queue.pop();
+            std::unique_lock<std::mutex> lock(_queue_mutex); // 这里锁定不能使用lock_guard，因为lock_guard锁定后无法灵活的解锁，只能析构时解锁
+            _queue_cond.wait(lock, [this]() { return !_data_queue.empty(); }); // 锁会在wait过程中解锁，一直等到lambda表达式成立
+            std::shared_ptr<T> res(_data_queue.front());
+            _data_queue.pop();
             return res;
         }
 
@@ -95,12 +95,12 @@ namespace zhaocc {
         * @return true代表有元素，false则代表没有
         */
         bool try_pop(T& new_val) {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            if (data_queue.empty()) {
+            std::lock_guard<std::mutex> lock(_queue_mutex);
+            if (_data_queue.empty()) {
                 return false;
             }
-            new_val = data_queue.front();
-            data_queue.pop();
+            new_val = _data_queue.front();
+            _data_queue.pop();
             return true;
         }
 
@@ -109,12 +109,12 @@ namespace zhaocc {
         * @return shared pointer指向元素，如果没元素则返回空指针
         */
         std::shared_ptr<T> try_pop() {
-            std::lock_guard<std::mutex> lock(queue_mutex);
-            if (data_queue.empty()) {
+            std::lock_guard<std::mutex> lock(_queue_mutex);
+            if (_data_queue.empty()) {
                 return std::shared_ptr<T>();
             }
-            std::shared_ptr<T> res(data_queue.front());
-            data_queue.pop();
+            std::shared_ptr<T> res(_data_queue.front());
+            _data_queue.pop();
             return res;
         }
     };

@@ -11,8 +11,9 @@ add_executable(server
         include/simple_file_down_server.hpp
         include/tools.hpp include/multi_connection_server.hpp
         include/libev_multi_con_server.hpp
-        include/libev_half_reactive_server.hpp
-        include/thread_safe_queue.hpp)
+        include/thread_safe_queue.hpp
+        include/libev_half_sync_reactive_thread_pool_server.hpp
+        include/epoll_half_sync_reactive_proc_pool_server.hpp)
 
 # boost begin
 set(Boost_DETAILED_FAILURE_MSG ON)
