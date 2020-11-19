@@ -12,7 +12,8 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <cstring>
-#include <errno.h>
+#include <cerrno>
+#include <csignal>
 
 #include <arpa/inet.h>
 #include <event.h>

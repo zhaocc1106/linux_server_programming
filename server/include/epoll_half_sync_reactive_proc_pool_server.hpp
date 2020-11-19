@@ -47,10 +47,13 @@ static int setnonblocking(int fd) {
 * @param epollfd: epoll fd
 * @param fd: 被监听的fd
 */
-static void addfd(int epollfd, int fd) {
+static void addfd(int epollfd, int fd, bool edge_trigger = false) {
     epoll_event event{};
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN;
+    if (edge_trigger) {
+        event.events |= EPOLLET;
+    }
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
     setnonblocking(fd);
 }
@@ -343,13 +346,14 @@ template<typename T>
 void SrvProcessPool<T>::run_parent() {
     setup_sig_pipe();
     /*父进程监听_listenfd*/
-    addfd(_epollfd, _listenfd);
+    addfd(_epollfd, _listenfd, false); // 使用level trigger epoll，防止丢失连接请求
 
     epoll_event events[MAX_EVENT_NUMBER];
     int sub_process_counter = 0;
     int new_conn = 1;
     int ret = -1;
     while (!_stop) {
+        std::cout << "before" << std::endl;
         int number = epoll_wait(_epollfd, events, MAX_EVENT_NUMBER, -1);
         if ((number < 0) && (errno != EINTR)) {
             std::cout << "[Main process] epoll failed errno string: " << strerror(errno) << std::endl;
@@ -387,20 +391,20 @@ void SrvProcessPool<T>::run_parent() {
                             pid_t pid;
                             int stat;
                             while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
-                                for (int j = 0; j < _process_number; ++j) {
+                                for (int k = 0; k < _process_number; ++k) {
                                     /* 如果进程池中第i个子进程退出了，则主进程关闭相应的通信管道，并设置相应的m_pid为-1，以标记该子进程已经退出 */
-                                    if (_sub_process[j].m_pid == pid) {
+                                    if (_sub_process[k].m_pid == pid) {
                                         std::cout << "[Main process] Sub process[" << pid << "] exit." << std::endl;
                                         SYS_LOGW(PROC_POOL_SERVER, "[Main process] Sub process[0x%x] exit.", pid);
-                                        close(_sub_process[j].m_pipefd[0]);
-                                        _sub_process[j].m_pid = -1;
+                                        close(_sub_process[k].m_pipefd[0]);
+                                        _sub_process[k].m_pid = -1;
                                     }
                                 }
                             }
                             /*如果所有子进程都已经退出了，则父进程也退出*/
                             _stop = true;
-                            for (int i = 0; i < _process_number; ++i) {
-                                if (_sub_process[i].m_pid != -1) {
+                            for (int k = 0; k < _process_number; ++k) {
+                                if (_sub_process[k].m_pid != -1) {
                                     _stop = false;
                                 }
                             }
@@ -413,8 +417,8 @@ void SrvProcessPool<T>::run_parent() {
                                          "now." << std::endl;
                             SYS_LOGW(PROC_POOL_SERVER, "[Main process] Received termination or interrupt signal kill "
                                                        "all the clild now.");
-                            for (int i = 0; i < _process_number; ++i) {
-                                int pid = _sub_process[i].m_pid;
+                            for (int k = 0; k < _process_number; ++k) {
+                                int pid = _sub_process[k].m_pid;
                                 if (pid != -1) {
                                     kill(pid, SIGTERM);
                                 }

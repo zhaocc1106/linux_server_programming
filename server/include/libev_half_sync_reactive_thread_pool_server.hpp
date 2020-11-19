@@ -14,13 +14,15 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <cstring>
-#include <errno.h>
+#include <cerrno>
+#include <csignal>
 
 #include <arpa/inet.h>
 #include <event.h>
 #include <evutil.h>
 #include <event2/listener.h>
 #include <event2/bufferevent.h>
+#include <boost/asio.hpp>
 
 #include "tools.hpp"
 #include "thread_safe_queue.hpp"
@@ -64,6 +66,8 @@ std::vector<zhaocc::ThreadSafeQueue<CommQueueItem>> comm_queues; // 维护所有
 
 /* 主线程与工作线程通信相关--END */
 
+static std::atomic<int> succ_cli_count(0); // 完成收消息的客户端数量
+
 /************************************************ Functions ***********************************************/
 
 /**
@@ -83,7 +87,7 @@ static void client_msg_cb(bufferevent* be, void* arg) {
         if (n <= 0) {
             // std::cout << "[Thread-" << th_id << "] bufferevent read error, n: " << n << ", errno: " << errno
             //           << ", errno string: " << strerror(errno) << std::endl;
-            // SYS_LOGW(LIBEV_SERVER_TAG, "[Thread-0x%lx] bufferevent read error, n: %d, errno: %d, errno string: %s",
+            // SYS_LOGW(LIBEV_ADV_SERVER_TAG, "[Thread-0x%lx] bufferevent read error, n: %d, errno: %d, errno string: %s",
             //          th_id, n, errno, strerror(errno));
             break;
         }
@@ -93,7 +97,7 @@ static void client_msg_cb(bufferevent* be, void* arg) {
         std::cout << "[Worker-" << worker_ind << " Thread-" << th_id << "] Recv from fd(" << cli_fd
                   << "), succ_cli_count: " << succ_cli_count.load() << ", msg len: " << n << ", msg: " << buf
                   << std::endl;
-        SYS_LOGI(LIBEV_SERVER_TAG,
+        SYS_LOGI(LIBEV_ADV_SERVER_TAG,
                  "[Worker-%d Thread-0x%lx] Recv msg from fd(%d), succ_cli_count: %d, len: %d, msg: %s",
                  worker_ind, th_id, cli_fd, succ_cli_count.load(), n, buf);
     }
@@ -114,17 +118,17 @@ static void client_event_cb(bufferevent* be, short event, void* arg) {
     int worker_ind = ctx->worker_id;
     int cli_fd = bufferevent_getfd(be);
     // std::cout << "event: " << event << std::endl;
-    // SYS_LOGI(LIBEV_SERVER_TAG, "event: 0x%x", event);
+    // SYS_LOGI(LIBEV_ADV_SERVER_TAG, "event: 0x%x", event);
 
     if (event & BEV_EVENT_EOF) {
         std::cout << "[Worker-" << worker_ind << " Thread-" << th_id << "] Remote fd(" << cli_fd << ") disconnect"
                   << std::endl;
-        SYS_LOGN(LIBEV_SERVER_TAG, "[Worker-%d Thread-0x%lx] Remote fd(%d) disconnect.", worker_ind, th_id, cli_fd);
+        SYS_LOGN(LIBEV_ADV_SERVER_TAG, "[Worker-%d Thread-0x%lx] Remote fd(%d) disconnect.", worker_ind, th_id, cli_fd);
         bufferevent_free(be);
     } else if (event & BEV_EVENT_ERROR) {
         std::cout << "[Worker-" << worker_ind << " Thread-" << th_id << "] Remote fd(" << cli_fd << ") error, errno: "
                   << errno << ", errno string: " << strerror(errno) << std::endl;
-        SYS_LOGW(LIBEV_SERVER_TAG, "[Worker-%d Thread-0x%lx] Remote fd(%d) error, errno: %d, errno string: %s.",
+        SYS_LOGW(LIBEV_ADV_SERVER_TAG, "[Worker-%d Thread-0x%lx] Remote fd(%d) error, errno: %d, errno string: %s.",
                  worker_ind, th_id, cli_fd, errno, strerror(errno));
         bufferevent_free(be);
     }
