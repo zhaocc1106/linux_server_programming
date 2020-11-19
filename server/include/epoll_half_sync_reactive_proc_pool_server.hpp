@@ -11,7 +11,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <cstdio>
 #include <unistd.h>
 #include <fcntl.h>
 #include <csignal>
@@ -236,8 +235,10 @@ void SrvProcessPool<T>::run() {
 */
 template<typename T>
 void SrvProcessPool<T>::run_child() {
-    std::cout << "[Process-" << _sub_process[_idx].m_pid << "] Begin running..." << std::endl;
-    SYS_LOGN(PROC_POOL_SERVER, "[Process-0x%x] Begin running...", _sub_process[_idx].m_pid);
+    pid_t pid = getpid();
+
+    std::cout << "[Process-" << pid << "] Begin running..." << std::endl;
+    SYS_LOGN(PROC_POOL_SERVER, "[Process-0x%x] Begin running...", pid);
 
     setup_sig_pipe();
     /* 每个子进程都通过其在进程池中的序号值_idx找到与父进程通信的管道 */
@@ -251,9 +252,9 @@ void SrvProcessPool<T>::run_child() {
     while (!_stop) {
         int number = epoll_wait(_epollfd, events, MAX_EVENT_NUMBER, -1);
         if ((number < 0) && (errno != EINTR)) {
-            std::cout << "[Process-" << _sub_process[_idx].m_pid << "] epoll failed errno string: " << strerror(errno)
+            std::cout << "[Process-" << pid << "] epoll failed errno string: " << strerror(errno)
                       << std::endl;
-            SYS_LOGW(PROC_POOL_SERVER, "[Process-0x%x] epoll failed errno string: %s", _sub_process[_idx].m_pid,
+            SYS_LOGW(PROC_POOL_SERVER, "[Process-0x%x] epoll failed errno string: %s", pid,
                      strerror(errno));
             break;
         }
@@ -266,21 +267,25 @@ void SrvProcessPool<T>::run_child() {
                 if (ret <= 0) {
                     continue;
                 } else {
-                    std::cout << "[Process-" << _sub_process[_idx].m_pid
-                              << "] Received connection distribution from main process." << std::endl;
+                    std::cout << "[Process-" << pid << "] Received connection distribution from main process."
+                              << std::endl;
                     SYS_LOGN(PROC_POOL_SERVER, "[Process-0x%x] Received connection distribution from main process.",
-                             _sub_process[_idx].m_pid);
+                             pid);
 
                     struct sockaddr_in client_address{};
                     socklen_t client_addrlength = sizeof(client_address);
                     int connfd = accept(_listenfd, (struct sockaddr*) &client_address, &client_addrlength);
                     if (connfd < 0) {
-                        std::cout << "[Process-" << _sub_process[_idx].m_pid << "] accept failed, errno string: "
+                        std::cout << "[Process-" << pid << "] accept failed, errno string: "
                                   << strerror(errno);
                         SYS_LOGW(PROC_POOL_SERVER, "[Process-0x%x] accept failed, errno string: %s.",
-                                 _sub_process[_idx].m_pid, strerror(errno));
+                                 pid, strerror(errno));
                         break;
                     }
+
+                    std::cout << "[Process-" << pid << "] New connection with fd: " << connfd << std::endl;
+                    SYS_LOGN(PROC_POOL_SERVER, "[Process-0x%x] New connection with fd: %d.", pid, connfd);
+
                     addfd(_epollfd, connfd);
                     /* 模板类T必须实现init方法，以初始化一个客户连接。 */
                     users[connfd].init(_epollfd, connfd, client_address);
@@ -294,8 +299,8 @@ void SrvProcessPool<T>::run_child() {
                     if (ret <= 0) {
                         break;
                     } else {
-                        for (auto& signal : signals) {
-                            switch (signal) {
+                        for (int j = 0; j < ret; j++) {
+                            switch (signals[j]) {
                             case SIGCHLD: {
                                 pid_t pid;
                                 int stat;
@@ -376,8 +381,8 @@ void SrvProcessPool<T>::run_parent() {
                 if (ret <= 0) {
                     continue;
                 } else {
-                    for (char& signal : signals) {
-                        switch (signal) {
+                    for (int j = 0; j < ret; j++) {
+                        switch (signals[j]) {
                         case SIGCHLD: {
                             pid_t pid;
                             int stat;
@@ -496,8 +501,8 @@ void TestConn::process() const {
         } else if (len < 0) {
             if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
                 /* 等待下一个EPOLL_IN事件再读 */
-                std::cout << "[Process-" << pid << "] Edge trigger, wait next EPOLL_IN." << std::endl;
-                SYS_LOGW(PROC_POOL_SERVER, "[Thread-0x%x] Edge trigger, wait next EPOLL_IN.", pid);
+                // std::cout << "[Process-" << pid << "] Edge trigger, wait next EPOLL_IN." <   < std::endl;
+                // SYS_LOGW(PROC_POOL_SERVER, "[Thread-0x%x] Edge trigger, wait next EPOLL_IN.", pid);
             } else {
                 /* recv异常，断开连接 */
                 goto CLOSE_FD;
@@ -505,6 +510,8 @@ void TestConn::process() const {
             break;
         }
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟处理请求消耗时间
+    send(_cli_fd, "OK", 2, 0); // 回复一个消息
     return;
 
     CLOSE_FD:
@@ -519,7 +526,7 @@ void TestConn::process() const {
 * @param port: 端口
 * @param concur: 进程池并发数量
 */
-void start_libev_adv_server(const char* ip, int port, int concur) {
+void start_process_pool_server(const char* ip, int port, int concur) {
     /* 设置tcp/ipv4的socket地址 */
     sockaddr_in srv_addr{};
     bzero(&srv_addr, sizeof(srv_addr));
@@ -538,8 +545,15 @@ void start_libev_adv_server(const char* ip, int port, int concur) {
     int ret = bind(srv_fd, (sockaddr*) &srv_addr, sizeof(srv_addr));
     assert(ret != -1);
 
-    SrvProcessPool<TestConn>& srv_process_pool = SrvProcessPool<TestConn>::create(srv_fd, 8);
+    /* listen */
+    ret = listen(srv_fd, 1024);
+    assert(ret != -1);
+
+    /* 启动server进程池 */
+    SrvProcessPool<TestConn>& srv_process_pool = SrvProcessPool<TestConn>::create(srv_fd, concur);
     srv_process_pool.run();
+
+    close(srv_fd); // 关闭listen fd
 }
 
 #endif //SERVER_EPOLL_HALF_SYNC_REACTIVE_PROC_POOL_SERVER_HPP

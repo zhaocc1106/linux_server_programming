@@ -6,11 +6,12 @@
 #include <sys/resource.h>
 
 #include "tools.hpp"
-#include "simple_tcp_server.hpp"
-#include "simple_file_down_server.hpp"
-#include "multi_connection_server.hpp"
-#include "libev_multi_con_server.hpp"
-#include "libev_half_sync_reactive_thread_pool_server.hpp"
+// #include "simple_tcp_server.hpp"
+// #include "simple_file_down_server.hpp"
+// #include "multi_connection_server.hpp"
+// #include "libev_multi_con_server.hpp"
+// #include "libev_half_sync_reactive_thread_pool_server.hpp"
+#include "epoll_half_sync_reactive_proc_pool_server.hpp"
 
 #define RCV_BUF_SIZE 66535
 #define TAG "Main"
@@ -56,5 +57,6 @@ int main(int argc, char** argv) {
     //                        MT_EPOLL, // Epoll多路复用机制类型
     //                        EP_ET); // 如果是Epoll，则需要指定trigger类型，其他机制可以忽略
     // start_libev_multi_server(ip, port);
-    start_libev_adv_server(ip, port, concur);
+    // start_libev_adv_server(ip, port, concur);
+    start_process_pool_server(ip, port, concur);
 }
